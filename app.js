@@ -113,7 +113,7 @@ function verifyToken(req, res, next){
     }
 }
 
-app.get('/', (req, res) => {
+app.get('/prod/', (req, res) => {
 	res.send("You have reached the Classification API")
 })
 
