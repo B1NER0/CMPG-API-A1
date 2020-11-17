@@ -113,7 +113,7 @@ function verifyToken(req, res, next){
     }
 }
 
-app.get('/prod/', (req, res) => {
+app.get('/', (req, res) => {
 	res.send("You have reached the Classification API")
 })
 
@@ -339,8 +339,5 @@ function sendData(res){
 }
 
 
-
-
-app.listen(PORT, () => {
-    console.log("Server listening on port " + PORT);
-})
+// Export your Express configuration so that it can be consumed by the Lambda handler
+module.exports = app
