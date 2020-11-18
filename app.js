@@ -11,6 +11,8 @@ const { parse } = require('path');
 const MongoClient = require('mongodb').MongoClient;
 const bodyParser = require('body-parser');
 const fileUpload = require('express-fileupload')
+const fs = require("fs")
+const path = require('path');
 
 const PORT = process.env.PORT || 8080;
 
@@ -67,11 +69,12 @@ app.post('/login', async (req, res) => {
     {
         try{
             if(await bcrypt.compare(req.body.password, user.password)){
-                
+                console.log(user);
                 jwt.sign({user: user}, 'secretkey', { expiresIn: '10s'}, (err, token) => {
                     //redirect to homepage
                     res.json({
-                        token,
+						token,
+						username: user.username,
                         message: "Success"
                     })
                 });            
@@ -133,7 +136,7 @@ app.get('/auth', verifyToken, (req, res) => {
 })
 
 //Add new user to database with hashed password
-app.post('/users/new', async (req, res) => {
+app.post('/newUser', async (req, res) => {
     try{
         const salt = await bcrypt.genSalt();
         const hashedPassword = await bcrypt.hash(req.body.password, salt);
@@ -146,7 +149,7 @@ app.post('/users/new', async (req, res) => {
         //Add user to database after hashing
         dbo.collection("Users").insertOne(user, function(err) {
             if(err) throw error;
-            console.log("Document inserted successfully");
+            console.log("User added successfully");
             res.status(200).send('User added successfully');
         })        
     }catch{
@@ -154,6 +157,25 @@ app.post('/users/new', async (req, res) => {
     }
 });
 
+
+//CLEAR uploads folder
+
+function clearUploads() {
+	fs.readdir('./uploads/', (err, files) => {
+		if(err) {
+			console.log('Error removing uploads content')
+
+		};
+
+		for(const file of files) {
+			fs.unlink(path.join('./uploads/', file), err => {
+				if(err){
+					console.log(err);
+				}
+			})
+		}
+	})
+}
 
 //FILE UPLOAD
 
@@ -167,7 +189,7 @@ app.post('/upload', async (req, res) => {
         }else{
             //Name of hte input field
 
-            let doc = req.files.DOC;
+            let doc = req.files.file;
 
             doc.mv('./uploads/' + doc.name);
 
@@ -192,10 +214,31 @@ app.post('/upload', async (req, res) => {
 //IDENTIFICATION
 app.get('/getData', (req, res) => {
     beginAnalyse(res);
-
 })
 //Identify entities from a files and send back to APPI
 
+app.post('/sendData', (req, res) => {
+   addIdentifiedData(req.body.data, req.body.uID)
+})
+
+function addIdentifiedData(theData, userID){
+
+    try{
+        const data = {
+            user_id: userID,
+            data: theData,
+        }
+
+        dbo.collection("classified_data").insertOne(data, function(err){
+            if(err) throw err;
+
+            console.log("Classified data added successfully to database");            
+        })
+
+    }catch(err){
+        console.log('Problem adding data to database');
+    }
+}
 
 const key = '6ab597669ab74a7899073494ae9000a4';
 const endpoint = 'https://classificationapi.cognitiveservices.azure.com/';
@@ -250,47 +293,64 @@ function luhn_checksum(code) {
 async function entityRecognition(client, textToAnalyze, res){
 
     const entityInputs = [textToAnalyze];
+    console.log(textToAnalyze);
      //   "Here in Potchefstroom, Jack Coventry with 6011575233277578 a number an age of 18 years and Jill Huffey were both 0732436572 married Mark Johnson white males and christian and the others where muslims was going up the Hill. degenaarp@gmail.com They had an id of 9910295177084 and a number of 0739360709",
        // "I live banking 4067240822588541 at 18 Rose street Gauteng with an id of 2001014800086"];
     const entityResults = await client.recognizeEntities(entityInputs);
 
-    entityResults.forEach(document => {
-        console.log(`Document ID: ${document.id}`);
-        document.entities.forEach(entity => {
-            console.log(`\tName: ${entity.text} \tCategory: ${entity.category} \tSubcategory: ${entity.subCategory ? entity.subCategory : "N/A"}`);
-            console.log(`\tScore: ${entity.confidenceScore}`);
-        });
-    });
+    //entityResults.forEach(document => {
+        //if(document !== undefined){
+            //console.log(`Document ID: ${document.id}`);
+        //   if(document.entities !== undefined){
+           //     document.entities.forEach(entity => {
+            //        if(entity.text !== undefined || entity.category !== undefined){
+                       // console.log(`\tName: ${entity.text} \tCategory: ${entity.category}`);
+                    
+             //       }
+         //   })
+        //}
+   // }
+   // });
 
-    console.log("--------DONE READING--------")
+    
 
     //Seperate into categories for further analysing
+    
     entityResults.forEach(document => {
-        document.entities.forEach(entity => {
-            if(entity.category === 'Quantity'){
-                tempQuant.push(entity.text)
-            }else if(entity.category === 'Email'){
-                tempEmail.push(entity.text);
-            }else if(entity.category === 'PersonType'){
-                tempReligion.push(entity.text);
-            }else if(entity.category === 'Person'){
-                tempPerson.push(entity.text);
-            }else if(entity.category === 'Location'){
-                tempLocation.push(entity.text);
-            }else if(entity.category === 'Address'){
-                tempLocation.push(entity.text);
+        //console.log("________________________________HERE")
+        if(document !== undefined){
+            if(document.entities !== undefined){
+                document.entities.forEach(entity => {
+                    if(entity.category === 'Quantity'){
+                        tempQuant.push(entity.text)
+                    }else if(entity.category === 'Email'){
+                        tempEmail.push(entity.text);
+                    }else if(entity.category === 'PersonType'){
+                        tempReligion.push(entity.text);
+                    }else if(entity.category === 'Person'){
+                        tempPerson.push(entity.text);
+                    }else if(entity.category === 'Location'){
+                        tempLocation.push(entity.text);
+                    }else if(entity.category === 'Address'){
+                    }
+                })
             }
-        })
+        }else{
+            return;
+        }
+        
     })
-
-    startSorting(res);
+	console.log("--------DONE READING--------")
+	startSorting(res);
 }
 
 function startSorting(res){
     
     tempQuant.forEach(num => {//analyze quantity in terms of id numbers, cell phone numbers and bank cards
         analyzeNumber(num)
-    });
+	});
+	
+	console.log("--------DONE SORTING--------")
 
     sendData(res);
 }
@@ -312,8 +372,12 @@ function sendData(res){
     dataToSend.push({Person: tempPerson}, {IDNumber: idNumber}, {Phone: phoneNumber}, {Email: tempEmail}, {Religion: tempReligion}, {Location: tempLocation}, {BankingNumber: banking})
 
     console.log('Finished analysing data');
+   // console.log(dataToSend);
     res.send(dataToSend);
     resetArrays();
+    //console.log(dataToSend);
+	
+	clearUploads();
 }
 
 
@@ -323,8 +387,10 @@ function sendData(res){
     var textract = require('textract');
 
     var fs = require('fs');
-    var files = fs.readdirSync('./uploads');
-
+	var files = fs.readdirSync('./uploads');
+	
+	if(files.length > 0){
+	
     console.log('File to read: ' + files);
 
     textract.fromFileWithPath('./uploads/' + files[0], function(error, text) {
@@ -335,9 +401,16 @@ function sendData(res){
             console.log(err)
         }
     
-    })
+	})
+	
+
+	//clearUploads();
+}
 }
 
-
+app.listen(PORT, () => {
+    console.log("Server listening on port " + PORT);
+})
 // Export your Express configuration so that it can be consumed by the Lambda handler
 module.exports = app
+
