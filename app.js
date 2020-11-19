@@ -89,9 +89,8 @@ app.post('/login', async (req, res) => {
                 res.send('Not allowed');
             }
         }
-
         catch{
-        res.status(500).send();
+            res.status(500).send();
         }       
     }
     else{
@@ -421,9 +420,9 @@ function sendData(res){
 
 
 
-app.listen(PORT, () => {
-    console.log("Server listening on port " + PORT);
-})
+//app.listen(PORT, () => {
+//    console.log("Server listening on port " + PORT);
+//})
 // Export your Express configuration so that it can be consumed by the Lambda handler
 module.exports = app
 
