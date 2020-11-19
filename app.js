@@ -24,10 +24,7 @@ app.use(fileUpload({
 app.use(bodyParser.json())
 app.use(bodyParser.urlencoded({extended: true}))
 
-app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
-    next();
-})
+
 
 
 
@@ -47,7 +44,14 @@ MongoClient.connect(URI, function(err, db) {
 app.get('/users', (req, res) => {
     dbo.collection("Users").find({}).toArray(function(err, result){
         if(err) throw err;
-        res.send(result);
+        const response = {
+            statusCode: 200,
+            body: "TRIED",
+            headers: {
+                "Access-Control-Allow-Origin": "*"
+            }
+        }
+       return response
     });
 })
 
