@@ -218,10 +218,10 @@ app.get('/getData', (req, res) => {
 //Identify entities from a files and send back to APPI
 
 app.post('/sendData', (req, res) => {
-   addIdentifiedData(req.body.data, req.body.uID)
+   addIdentifiedData(req.body.data, req.body.uID, res)
 })
 
-function addIdentifiedData(theData, userID){
+function addIdentifiedData(theData, userID, res){
 
     try{
         const data = {
@@ -232,11 +232,13 @@ function addIdentifiedData(theData, userID){
         dbo.collection("classified_data").insertOne(data, function(err){
             if(err) throw err;
 
-            console.log("Classified data added successfully to database");            
+            console.log("Classified data added successfully to database");  
+            res.status(200).send("Added to database");
         })
 
     }catch(err){
         console.log('Problem adding data to database');
+        res.send('Problem adding to database')
     }
 }
 
@@ -407,6 +409,10 @@ function sendData(res){
 	//clearUploads();
 }
 }
+
+
+
+
 
 app.listen(PORT, () => {
     console.log("Server listening on port " + PORT);
