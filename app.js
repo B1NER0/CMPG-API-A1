@@ -1,32 +1,33 @@
-"use strict";
+/*var chmodr = require('chmodr');
+
+chmodr('./node_modules', 0o777, (err) => {
+  if (err) {
+    console.log('Failed to execute chmod', err);
+  } else {
+    console.log('Success');
+  }
+});*/
 const { TextAnalyticsClient, AzureKeyCredential } = require("@azure/ai-text-analytics");
-const { text } = require("express");
 const express = require('express');
-const jwt = require('jsonwebtoken');
-const bcrypt = require('bcrypt');
+const app = express();
 const cors = require('cors');
-const e = require('express');
-const { json } = require('body-parser');
-const { parse } = require('path');
-const MongoClient = require('mongodb').MongoClient;
-const bodyParser = require('body-parser');
+//const bcrypt = require('bcrypt');
 const fileUpload = require('express-fileupload')
-const fs = require("fs")
+const jwt = require('jsonwebtoken');
+const MongoClient = require('mongodb').MongoClient;
+const passwordHash = require('password-hash');
+const bodyParser = require('body-parser');
+const { parse } = require('path');
 const path = require('path');
 
-const PORT = process.env.PORT || 8080;
-
-const app = express();app.use(cors());
+app.use(cors());
 app.use(express.json());
 app.use(fileUpload({
     createParentPath: true
 }))
 app.use(bodyParser.json())
 app.use(bodyParser.urlencoded({extended: true}))
-
-
-
-
+const PORT = process.env.PORT || 8080;
 
 var URI = "mongodb+srv://phil:Alfadelta4@cluster0.ibqct.mongodb.net/?retryWrites=true&w=majority";
 var dbo;
@@ -40,18 +41,14 @@ MongoClient.connect(URI, function(err, db) {
     dbo = db.db("CMPG");
 });
 
-//Retrieve all users
+app.get('/', (req, res) => {
+    res.send("Welcome to the classification API. Please make sure you are logged in");
+})
+
 app.get('/users', (req, res) => {
     dbo.collection("Users").find({}).toArray(function(err, result){
         if(err) throw err;
-        const response = {
-            statusCode: 200,
-            body: "TRIED",
-            headers: {
-                "Access-Control-Allow-Origin": "*"
-            }
-        }
-       return response
+        res.status(200).send(result);
     });
 })
 
@@ -71,17 +68,20 @@ async function locateUser(theEmail) {
    return user;
 }
 
+
+//HERE LOGIN
 //user login
 app.post('/login', async (req, res) => {
     //Authenticate user
     const user = await authUser(req.body.email, req.body.password)
-
-    if(user !== null)
+  //const user = dbo.collection("Users").findOne({email: req.body.email})
+   
+    if(user)
     {
         try{
-            if(await bcrypt.compare(req.body.password, user.password)){
-                console.log(user);
-                jwt.sign({user: user}, 'secretkey', { expiresIn: '10s'}, (err, token) => {
+            if(await passwordHash.verify(req.body.password, user.password)){
+                console.log(user.username + " logged in");
+                jwt.sign({user: user}, 'secretkey', { expiresIn: '10m'}, (err, token) => {
                     //redirect to homepage
                     res.json({
 						token,
@@ -93,8 +93,8 @@ app.post('/login', async (req, res) => {
                 res.send('Not allowed');
             }
         }
-        catch{
-            res.status(500).send();
+        catch(err){
+            console.log(err)
         }       
     }
     else{
@@ -126,10 +126,6 @@ function verifyToken(req, res, next){
     }
 }
 
-app.get('/', (req, res) => {
-	res.send("You have reached the Classification API")
-})
-
 //check if user is still actively authenticated
 app.get('/auth', verifyToken, (req, res) => {
     jwt.verify(req.token, 'secretkey', (err, authData) => {
@@ -146,25 +142,26 @@ app.get('/auth', verifyToken, (req, res) => {
 })
 
 //Add new user to database with hashed password
-app.post('/newUser', async (req, res) => {
+app.post('/newUser', (req, res) => {
     try{
-        const salt = await bcrypt.genSalt();
-        const hashedPassword = await bcrypt.hash(req.body.password, salt);
+        var hPass = passwordHash.generate(req.body.password);
+
         const user = {
             username: req.body.username,
             email: req.body.email,
-            password: hashedPassword
+            password: hPass
         }
-
+            
         //Add user to database after hashing
         dbo.collection("Users").insertOne(user, function(err) {
             if(err) throw error;
             console.log("User added successfully");
             res.status(200).send('User added successfully');
         })        
+
     }catch{
         res.status(201).send("Something went wrong");
-    }
+   }
 });
 
 
@@ -304,32 +301,37 @@ function luhn_checksum(code) {
 
 async function entityRecognition(client, textToAnalyze, res){
 
-    const entityInputs = [textToAnalyze];
-    console.log(textToAnalyze);
-     //   "Here in Potchefstroom, Jack Coventry with 6011575233277578 a number an age of 18 years and Jill Huffey were both 0732436572 married Mark Johnson white males and christian and the others where muslims was going up the Hill. degenaarp@gmail.com They had an id of 9910295177084 and a number of 0739360709",
-       // "I live banking 4067240822588541 at 18 Rose street Gauteng with an id of 2001014800086"];
+    if(textToAnalyze.includes(',')){
+        var thisText = textToAnalyze.replace(/,/g,' ');
+    }
+    
+    const entityInputs = [thisText];
+      ///  ["Here in Potchefstroom, Jack Coventry with 6011575233277578 a number an age of 18 years and Jill Huffey were both 0732436572 married Mark Johnson white males and christian and the others where muslims was going up the Hill. degenaarp@gmail.com They had an id of 9910295177084 and a number of 0739360709",
+     //   "I live Martin, with id 4067240822588541 at 18 Rose street Gauteng with an id of 2001014800086"];
+
+
+
     const entityResults = await client.recognizeEntities(entityInputs);
 
-    //entityResults.forEach(document => {
-        //if(document !== undefined){
-            //console.log(`Document ID: ${document.id}`);
-        //   if(document.entities !== undefined){
-           //     document.entities.forEach(entity => {
-            //        if(entity.text !== undefined || entity.category !== undefined){
-                       // console.log(`\tName: ${entity.text} \tCategory: ${entity.category}`);
+    entityResults.forEach(document => {
+        if(document !== undefined){
+            console.log(`Document ID: ${document.id}`);
+           if(document.entities !== undefined){
+               document.entities.forEach(entity => {
+                    if(entity.text !== undefined || entity.category !== undefined){
+                        console.log(`\tName: ${entity.text} \tCategory: ${entity.category}`);
                     
-             //       }
-         //   })
-        //}
-   // }
-   // });
+                    }
+            })
+        }
+    }
+   });
 
     
 
     //Seperate into categories for further analysing
     
     entityResults.forEach(document => {
-        //console.log("________________________________HERE")
         if(document !== undefined){
             if(document.entities !== undefined){
                 document.entities.forEach(entity => {
@@ -355,6 +357,7 @@ async function entityRecognition(client, textToAnalyze, res){
 	console.log("--------DONE READING--------")
 	startSorting(res);
 }
+
 
 function startSorting(res){
     
@@ -385,12 +388,32 @@ function sendData(res){
 
     console.log('Finished analysing data');
    // console.log(dataToSend);
+ //  res.setHeader('Access-Control-Allow-Origin', '*');
     res.send(dataToSend);
     resetArrays();
     //console.log(dataToSend);
 	
 	clearUploads();
 }
+
+app.get('/getClientData/:id', (req, res) => {
+    dbo.collection("classified_data").find({user_id: req.params.id}).toArray(function(err, result){
+        if(err) throw err;
+        var theArr = [];
+        theArr = result;
+        var sArray = [];
+        theArr.forEach(element => {            
+            element.data.forEach(el => {
+                if(!sArray.includes(el)){
+                    sArray.push(el)
+                }
+            })
+        })
+
+        console.log('Retrieved user records for client ID: ' + req.params.id)
+        res.status(200).send(sArray);
+    });
+});
 
 
  //Extract with Azure API and other algorithms
@@ -420,9 +443,57 @@ function sendData(res){
 }
 }
 
+app.listen(PORT, () => {
+    console.log("Listening on port " + PORT)
+})
 
 
 
+
+/*var port = process.env.PORT || 3000,
+    http = require('http'),
+    fs = require('fs'),
+    html = fs.readFileSync('index.html');
+
+var log = function(entry) {
+    fs.appendFileSync('/tmp/sample-app.log', new Date().toISOString() + ' - ' + entry + '\n');
+};
+
+var server = http.createServer(function (req, res) {
+    if (req.method === 'POST') {
+        var body = '';
+
+        req.on('data', function(chunk) {
+            body += chunk;
+        });
+
+        req.on('end', function() {
+            if (req.url === '/') {
+                log('Received message: ' + body);
+            } else if (req.url = '/scheduled') {
+                log('Received task ' + req.headers['x-aws-sqsd-taskname'] + ' scheduled at ' + req.headers['x-aws-sqsd-scheduled-at']);
+            }
+
+            res.writeHead(200, 'OK', {'Content-Type': 'text/plain'});
+            res.end();
+        });
+    } else {
+        res.writeHead(200);
+        res.write(html);
+        res.end();
+    }
+
+    
+});
+
+
+
+// Listen on port 3000, IP defaults to 127.0.0.1
+server.listen(port);
+
+// Put a friendly message on the terminal
+console.log('Server running at http://127.0.0.1:' + port + '/');
+*/
 
 //app.listen(PORT, () => {
 //    console.log("Server listening on port " + PORT);
